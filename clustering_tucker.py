@@ -114,9 +114,9 @@ print(all_planes.shape, mu.shape, sig.shape)
 
 labels_tania2 = np.loadtxt(sys.argv[1])
 labels_tania2
-labels_tania2[labels_tania2>0] = 1
-labels_tania2[labels_tania2==0] = 2
-labels_tania2[labels_tania2==1] = 0
+#labels_tania2[labels_tania2>0] = 1
+#labels_tania2[labels_tania2==0] = 2
+#labels_tania2[labels_tania2==1] = 0
 
 
 # In[110]:
@@ -483,7 +483,7 @@ for i in range(n_comp):
     for j in range(1):
         for k in range(len(latent_dims)):
             temp = np.array(TuckerAE_cluster_all[i][j][k])
-            diff = TuckerAE_Spectral_per_plane[j][k][index_cluster[i]]-temp
+            TuckerAE_Spectral_per_plane[j][k][index_cluster[i]] = temp
             for l in range(temp.shape[0]):
                 TuckerAE_Spectral_per_plane[j][k][index_cluster[i][l]] = temp[l]
                 f0_f_norm = np.copy(temp[l])

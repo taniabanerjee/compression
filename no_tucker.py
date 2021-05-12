@@ -114,32 +114,23 @@ print(all_planes.shape, mu.shape, sig.shape)
 
 labels_tania2 = np.loadtxt(sys.argv[1])
 labels_tania2
-#labels_tania2[labels_tania2>0] = 1
-#labels_tania2[labels_tania2==0] = 2
-#labels_tania2[labels_tania2==1] = 0
 
+#condition = (labels_tania2!=0) & (labels_tania2!=285)
+#labels_tania2[condition] = 1
+#labels_tania2[condition==False] = 2
+#labels_tania2[condition] = 0
 
-# In[110]:
+#labels = labels_tania2.copy()
 
-
-print (np.count_nonzero(labels_tania2 == 0), np.count_nonzero(labels_tania2 == 1))
-
-
-# In[111]:
-
-labels = labels_tania2.copy()
-'''
 labels = np.zeros((16395), dtype = int)
 print(labels.shape)
 for i in range(16395):
     if (labels_tania2[i] == 0):
         labels[i] = 0
-    #elif ((labels_tania[i] != 0) and (labels_tania[i] != 775)):
-    elif ((labels_tania2[i] != 0) and (labels_tania2[i] != 59)):
+    elif ((labels_tania2[i] != 0) and (labels_tania2[i] != 285)):
         labels[i] = 1
-    elif (labels_tania2[i] == 59):
+    elif (labels_tania2[i] == 285):
         labels[i] = 2
-''' 
 
 
 # In[112]:
@@ -152,17 +143,19 @@ print (np.count_nonzero(labels == 0), np.count_nonzero(labels == 1))
 
 
 n_comp = 1 #len(np.unique(labels))
+#cls = [0, 285]
+
 cluster = []
 index_cluster = []
 
 temp = np.moveaxis(all_planes, 0,1)
 print(temp.shape)
-
 '''
 for i in range(n_comp):
     clus = []
     idx = []
     for j in range(temp.shape[0]):
+        #if (labels[j] == cls[i]):
         if (labels[j] == i):
             temp1 = temp[j]
             clus.append(temp1)
@@ -174,7 +167,7 @@ for i in range(n_comp):
     
     idx = np.array(idx)
     index_cluster.append(idx)
-''' 
+'''
 clus = []
 idx = []
 for j in range(temp.shape[0]):
@@ -483,31 +476,65 @@ print(TuckerAE_cluster_all[0][0][0].shape)
 
 TuckerAE_Spectral_per_plane = np.zeros((1,4,16395,39,39))
 
-max_f0_norm_abs = np.zeros((n_comp+1, 4))
+count = {}
+max_f0_L2_norm_abs = np.zeros((n_comp+1, 4))
+max_f0_Linf_norm_abs = np.zeros((n_comp+1, 4))
 max_f0_raw_abs = np.zeros((n_comp+1, 4))
+fmax = np.max(all_planes[0], axis=(1, 2))
+fmax_orig = np.max(data_load[0], axis=(1, 2))
 for i in range(n_comp):
     for j in range(1):
         for k in range(len(latent_dims)):
             temp = np.array(TuckerAE_cluster_all[i][j][k])
-            diff = TuckerAE_Spectral_per_plane[j][k][index_cluster[i]]-temp
             for l in range(temp.shape[0]):
                 TuckerAE_Spectral_per_plane[j][k][index_cluster[i][l]] = temp[l]
-                f0_f_norm = np.copy(temp[l])
-                diff = all_planes[j][index_cluster[i][l]]-f0_f_norm
-                f0_abs = np.max(np.abs(diff))
-                if (max_f0_norm_abs[i][k] < f0_abs):
-                    max_f0_norm_abs[i][k] = f0_abs
-                f0_f_raw = f0_f_norm * sig[j][index_cluster[i][l]] + mu[j][index_cluster[i][l]]
-                diff = data_load[j][index_cluster[i][l]]-f0_f_raw
-                f0_max = np.max(data_load[j][index_cluster[i][l]])
-                f0_abs = np.max(np.abs(diff))/f0_max
-                if (max_f0_raw_abs[i][k] < f0_abs):
-                    max_f0_raw_abs[i][k] = f0_abs;
+            #Normalized space
+            diff = np.linalg.norm(TuckerAE_Spectral_per_plane[j][k][index_cluster[i]]-all_planes[j][index_cluster[i]])
+            max_f0_L2_norm_abs[i][k] = diff/temp.shape[0]
+            fmax_jki = fmax[index_cluster[i]]
+            abserr = np.max(np.abs(TuckerAE_Spectral_per_plane[j][k][index_cluster[i]]-all_planes[j][index_cluster[i]]), axis=(1,2))
+            relabserr = abserr/fmax_jki
+            relabserr_max = np.max(relabserr, axis=(0))
+            max_f0_Linf_norm_abs[i][k] = np.average(relabserr_max)
+            #Original space
+            f0_raw = TuckerAE_Spectral_per_plane[j][k][index_cluster[i]]*sig[j, index_cluster[i], np.newaxis, np.newaxis] + mu[j, index_cluster[i], np.newaxis, np.newaxis]
+            fmax_jki = fmax_orig[index_cluster[i]]
+            abserr = np.max(np.abs(f0_raw-data_load[j][index_cluster[i]]), axis=(1,2))
+            relabserr = abserr/fmax_jki
+            relabserr_max = np.max(relabserr, axis=(0))
+            max_f0_raw_abs[i][k] = np.average(relabserr_max)
 
-print ('max norm error', max_f0_norm_abs)
+
+print ('max norm L2 error', max_f0_L2_norm_abs)
+print ('max norm Linf error', max_f0_Linf_norm_abs)
 print ('max raw error', max_f0_raw_abs)
 # In[131]:
 
+def f0f_err_max_plane(data, data_recon):
+    fmax = np.max(data, axis=(1,2))
+    abserr = np.max(np.abs(data-data_recon), axis=(1,2))
+    relabserr = abserr/fmax
+    relabserr_max = np.max(relabserr)
+   
+    return relabserr_max
+
+def f0f_err_max(data, data_recon):
+    fmax = np.max(data, axis=(2,3))
+    abserr = np.max(np.abs(data-data_recon), axis=(2,3))
+    relabserr = abserr/fmax
+    relabserr_max = np.max(relabserr, axis=(1))
+    relabserr_max_avg = np.average(relabserr_max)
+
+    return relabserr_max_avg
+
+print (f0f_err_max_plane(TuckerAE_Spectral_per_plane[0,0], all_planes[0]))
+print (f0f_err_max_plane(TuckerAE_Spectral_per_plane[0,1], all_planes[0]))
+print (f0f_err_max_plane(TuckerAE_Spectral_per_plane[0,2], all_planes[0]))
+print (f0f_err_max_plane(TuckerAE_Spectral_per_plane[0,3], all_planes[0]))
+print (f0f_err_max_plane((TuckerAE_Spectral_per_plane[0,0]*sig[0, :, np.newaxis, np.newaxis] + mu[0, :, np.newaxis, np.newaxis]), data_load[0]))
+print (f0f_err_max_plane((TuckerAE_Spectral_per_plane[0,1]*sig[0, :, np.newaxis, np.newaxis] + mu[0, :, np.newaxis, np.newaxis]), data_load[0]))
+print (f0f_err_max_plane((TuckerAE_Spectral_per_plane[0,2]*sig[0, :, np.newaxis, np.newaxis] + mu[0, :, np.newaxis, np.newaxis]), data_load[0]))
+print (f0f_err_max_plane((TuckerAE_Spectral_per_plane[0,3]*sig[0, :, np.newaxis, np.newaxis] + mu[0, :, np.newaxis, np.newaxis]), data_load[0]))
 
 '''
 print(TuckerAE_Spectral_per_plane.shape)

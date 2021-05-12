@@ -119,8 +119,8 @@ all_planes = (all_planes - mu[:,:,np.newaxis, np.newaxis])/sig[:,:,np.newaxis, n
 
 sigmalist = []
 # In[8]:
-def similarity(w, tau):
-    return np.exp(-w/(2*tau*tau))
+def similarity(w, sigma):
+    return np.exp(-w/(sigma*sigma))
 
 def distance(xi, xj):
     return np.sum(np.square(np.subtract(xi, xj)))
@@ -132,13 +132,13 @@ plt.figure(figsize=[8,16])
 trimesh = tri.Triangulation(r, z, conn)
 plt.triplot(trimesh, alpha=0.2)
 plt.plot(r[8052], z[8052], 'x')
-plt.show()
+#plt.show()
 
 draw(all_planes[0][0])
-plt.show()
+#plt.show()
 draw(all_planes[0][8052])
 plt.title('distance: {}'.format(distance(all_planes[0][0], all_planes[0][8052])))
-plt.show()
+#plt.show()
 
 data = all_planes[0]
 data_reshape = data.reshape(data.shape[0], 39*39)
@@ -160,12 +160,11 @@ plt.title('Maximum value for each 39x39 image')
 #plt.show()
 
 plane = 0
-knn = 100
-tau = 1
+knn = 1
+sigma = 0.3
 edgelist = []
 num_points = rz.shape[0]
 #num_points = 6000
-'''
 print ('Find the edge lists')
 mypath = './edgelist.csv'
 for i in range(0, num_points):
@@ -184,30 +183,40 @@ with open(mypath, mode='w') as edgefile:
     csv_writer = csv.writer(edgefile, delimiter=',')
     for i in range(0, num_points):
         csv_writer.writerow(edgelist[i])
-'''
 eps=8
-#W = np.zeros([num_points,num_points])
-#WNN = np.zeros([num_points,num_points])
-W = np.full([num_points,num_points], 50, dtype=float)
-WNN = np.full([num_points,num_points], 50, dtype=float)
+W = np.zeros([num_points,num_points])
+WNN = np.zeros([num_points,num_points])
+#W = np.full([num_points,num_points], 50, dtype=float)
+#WNN = np.full([num_points,num_points], 50, dtype=float)
 print ('Compute the weight matrix')
+#wdf = pd.read_csv('weights-sim.csv')
+#w = wdf['distance']
+#sim = np.exp(-w*w/(2*sigma*sigma))
+#wdf['similarity'] = sim
+#for index, row in wdf.iterrows():
+    #i = int(row[1])
+    #j = int(row[2])
+    #W[i, j] = row[3]
+    #W[j, i] = row[3]
 for i in range(0, num_points):
     W[i,i] = 1
-    #edgelisti = edgelist[i]
+    edgelisti = edgelist[i]
     for j in range (i+1, num_points):
-        #if (j in edgelisti):
-        w = distance(all_planes[plane][i], all_planes[plane][j])
-        if (w < eps):
-            #W[i, j] = similarity(w, tau)
-            #W[j, i] = W[i, j]
-            W[i, j] = 1
-            W[j, i] = 1
+        if (j in edgelisti):
+            w = distance(all_planes[plane][i], all_planes[plane][j])
+        #if (w < eps):
+            W[i, j] = similarity(w, sigma)
+            W[j, i] = W[i, j]
+            #W[i, j] = 1
+            #W[j, i] = 1
+        #W[i, j] = npw[0]
+        #W[j, i] = wdf.loc[j, i]
 print ('Compute the KNN neighbors')
 #sigmaa = np.asarray(sigmalist)
 #print ('mean', sigmaa.mean())
 WNN = W.copy()
-#for i in range(1, knn):
-#    WNN = scipy.linalg.blas.dgemm(1.0, WNN, W)
+for i in range(1, knn):
+    WNN = scipy.linalg.blas.dgemm(1.0, WNN, W)
 
 print ('Compute the diagonal matrix degree matrix')
 D = np.zeros([num_points,num_points])
@@ -221,7 +230,7 @@ with open('./edgelist{}.csv'.format(knn), mode='w') as edgefile:
     for i in range(0, num_points):
         csv_writer.writerow([j for j in range (0, num_points) if (W[i, j] > 0)])
 
-with open('./weights_knn{}_eps{}_plane{}.csv'.format(knn, eps, plane), mode='w') as edgefile:
+with open('./weights_knn{}_sigma{}_plane{}.csv'.format(knn, sigma, plane), mode='w') as edgefile:
     csv_writer = csv.writer(edgefile, delimiter=',')
     for i in range(0, num_points):
         csv_writer.writerow([W[i, j] for j in range (0, num_points) if (W[i, j] > 0)])
@@ -249,13 +258,13 @@ vals, vecs = scipy.linalg.eig(A)
 vecs = vecs[:,np.argsort(vals)].real
 vals = vals[np.argsort(vals)].real
 
-with open('./eigenvalues_knn{}_eps{}_plane{}.csv'.format(knn, eps, plane), mode='w') as edgefile:
+with open('./eigenvalues_knn{}_sigma{}_plane{}.csv'.format(knn, sigma, plane), mode='w') as edgefile:
     csv_writer = csv.writer(edgefile, delimiter=',')
     csv_writer.writerow(vals)
 
 print ('Compute Kmeans clustering')
 #num_clusters=len([e for e in vals if e < 1.0e-14])
-num_clusters=8
+num_clusters=64
 kmeans = KMeans(n_clusters=num_clusters)
 kmeans.fit(vecs[:,1:num_clusters+1])
 y_labels = kmeans.labels_
@@ -269,7 +278,7 @@ for i in range(num_clusters):
 ax.set_xlabel('1st dimension')
 ax.set_ylabel('2nd dimension')
 ax.set_zlabel('3rd dimension')
-plt.savefig('embedded_knn{}_eps{}_plane{}.png'.format(knn, eps, plane), format='png')
+plt.savefig('embedded_knn{}_sigma{}_plane{}_clus{}.png'.format(knn, sigma, plane, num_clusters), format='png')
 #plt.show()
 
 fig = plt.figure()
@@ -280,7 +289,7 @@ for i in range(num_clusters):
 #ax.set_zlim(-2, 2)
 ax.set_xlabel('1st dimension')
 ax.set_ylabel('2nd dimension')
-plt.savefig('embedded_knn{}_eps{}_plane{}_2D.png'.format(knn, eps, plane), format='png')
+plt.savefig('embedded_knn{}_sigma{}_plane{}__clus{}_2D.png'.format(knn, sigma, plane, num_clusters), format='png')
 #plt.show()
 
 # In[11]:
@@ -307,7 +316,7 @@ for i in range(num_points):
         plt.plot(r[i], z[i], 'x', c='y')
    ''' 
 #plt.plot(r[k[0]], z[k[0]], 's', c=colormap(i%colormap.N))
-plt.savefig('domain_knn{}_eps{}_plane{}.png'.format(knn, eps, plane), format='png')
+plt.savefig('domain_knn{}_sigma{}_plane{}_clus{}.png'.format(knn, sigma, plane, num_clusters), format='png')
 #plt.show()
 print (time.time()-bt)
 
@@ -316,7 +325,7 @@ frequencies = np.asarray((unique, counts)).T
 
 print(frequencies)
 
-with open('labels_knn{}_eps{}_plane{}.txt'.format(knn, eps, plane), 'w') as filehandle:
+with open('labels_knn{}_sigma{}_plane{}_clus{}.txt'.format(knn, sigma, plane, num_clusters), 'w') as filehandle:
     for label in y_labels:
         filehandle.write('%s\n' % label)
     for u, c in zip(unique, counts):
